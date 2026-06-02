@@ -1,0 +1,11 @@
+{
+    "agents": [
+        "copilot"
+    ],
+    "cloud": true,
+    "guidelines": true,
+    "skills": [
+        "laravel-best-practices",
+        "deploying-laravel-cloud"
+    ]
+}
