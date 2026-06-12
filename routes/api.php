@@ -2,12 +2,13 @@
 // routes/web.php atau routes/api.php
 
 use App\Http\Controllers\Api\BroadcastController;
+use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ImportController;
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\KendaraanController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\OmniChannelController;
+use Illuminate\Support\Facades\Route;
 
 // Web routes
 // Route::prefix('broadcast')->group(function () {
@@ -23,48 +24,93 @@ use App\Http\Controllers\Api\OmniChannelController;
 //     Route::post('/retry-failed', [BroadcastController::class, 'retryFailedBroadcast']);
 //     Route::post('/cancel/{id}', [BroadcastController::class, 'cancelBroadcast']);
 // });
+// Route::prefix('v1')->group(function () {
+//     Route::middleware('auth:sanctum')->group(function () {
+
+//         // Dashboard
+//         Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
+
+//         // Vehicle Management
+//         Route::apiResource('kendaraans', KendaraanController::class);
+//         Route::put('/kendaraans/{id}/status', [KendaraanController::class, 'updateStatus']);
+
+
+//         // Post kendaraan baru
+//         Route::post('/kendaraans', [KendaraanController::class, 'store']);
+
+//         // POST endpoints for Broadcast
+//         Route::post('/send-mass', [BroadcastController::class, 'sendMassBroadcast']);
+//         // Route::post('/send-single/{id}', [BroadcastController::class, 'sendSingleBroadcast']);
+
+//         // Import routes
+//         Route::post('/import/excel', [ImportController::class, 'import']);
+//         Route::post('/import/csv', [ImportController::class, 'importCsv']);
+//         Route::get('/import/status/{id}', [ImportController::class, 'importStatus']);
+//         Route::get('/import/template', [ImportController::class, 'downloadTemplate']);
+
+//         // Reports
+//         // Route::get('/reports/export', [ReportController::class, 'exportExcel']);
+//         Route::get('/reports/data', [ReportController::class, 'getReportData']);
+//         Route::get('/reports', [ReportController::class, 'getReportByDate']);
+//         Route::get('/reports/excel', [ReportController::class, 'exportFilteredExcel']);
+
+
+//         // Omni Channel
+//         Route::get('/inbox', [OmniChannelController::class, 'getDataInbox']);
+//         Route::get('/chat/{dataid}', [OmniChannelController::class, 'getDataPercakapan']);
+//         Route::post('/reply', [OmniChannelController::class, 'sendReply']);
+//         // Route::put('/conversations/{kendaraanId}/read', [OmniChannelController::class, 'markAsRead']);
+//     });
+//     // Webhook for incoming messages
+//     Route::post('/webhook/whatsapp', [OmniChannelController::class, 'webhookIncoming']);
+// });
+
+
 Route::prefix('v1')->group(function () {
-    // Dashboard
-    Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
+    // ============ PUBLIC AUTH ROUTES ============
+    Route::prefix('auth')->group(function () {
+        Route::post('/register/sanctum', [AuthController::class, 'sanctumRegister']);
+        Route::post('/login/sanctum', [AuthController::class, 'sanctumLogin']);
+    });
 
-    // Vehicle Management
-    Route::apiResource('kendaraans', KendaraanController::class);
-    Route::put('/kendaraans/{id}/status', [KendaraanController::class, 'updateStatus']);
+    // ============ SANCTUM AUTHENTICATED ROUTES ============
+    Route::middleware('auth:sanctum')->group(function () {
+        // Auth
+        Route::get('/me', [AuthController::class, 'sanctumMe']);
+        Route::post('/logout', [AuthController::class, 'sanctumLogout']);
+        Route::post('/logout-all', [AuthController::class, 'sanctumLogoutAllDevices']);
+        Route::get('/tokens', [AuthController::class, 'sanctumTokens']);
+        Route::delete('/tokens/{tokenId}', [AuthController::class, 'sanctumRevokeToken']);
 
+        // Dashboard
+        Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
 
-    // Post kendaraan baru
-    Route::post('/kendaraans', [KendaraanController::class, 'store']);
+        // Vehicle Management
+        Route::apiResource('kendaraans', KendaraanController::class);
+        Route::put('/kendaraans/{id}/status', [KendaraanController::class, 'updateStatus']);
+        Route::post('/kendaraans', [KendaraanController::class, 'store']);
 
-    // POST endpoints for Broadcast
-    Route::post('/send-mass', [BroadcastController::class, 'sendMassBroadcast']);
-    Route::post('/send-single/{id}', [BroadcastController::class, 'sendSingleBroadcast']);
-    // Route::post('/retry-failed', [BroadcastController::class, 'retryFailedBroadcast']);
-    // Route::post('/cancel/{id}', [BroadcastController::class, 'cancelBroadcast']);
+        // Broadcast
+        Route::post('/send-mass', [BroadcastController::class, 'sendMassBroadcast']);
 
-    // callback endpoint for status update
-    // Route::post('/callback', [BroadcastController::class, 'statusUpdateCallback']);
-    // Route::post('/callback/test', [BroadcastController::class, 'statusUpdateCallback_test']);
+        // Import routes
+        Route::post('/import/excel', [ImportController::class, 'import']);
+        Route::post('/import/csv', [ImportController::class, 'importCsv']);
+        Route::get('/import/status/{id}', [ImportController::class, 'importStatus']);
+        Route::get('/import/template', [ImportController::class, 'downloadTemplate']);
 
-    // Import routes
-    Route::post('/import/excel', [ImportController::class, 'import']);
-    Route::post('/import/csv', [ImportController::class, 'importCsv']);
-    Route::get('/import/status/{id}', [ImportController::class, 'importStatus']);
-    Route::get('/import/template', [ImportController::class, 'downloadTemplate']);
+        // Reports
+        Route::get('/reports/data', [ReportController::class, 'getReportData']);
+        Route::get('/reports', [ReportController::class, 'getReportByDate']);
+        Route::get('/reports/excel', [ReportController::class, 'exportFilteredExcel']);
 
-    // Reports
-    // Route::get('/reports/export', [ReportController::class, 'exportExcel']);
-    Route::get('/reports/data', [ReportController::class, 'getReportData']);
-    Route::get('/reports', [ReportController::class, 'getReportByDate']);
-    Route::get('/reports/excel', [ReportController::class, 'exportFilteredExcel']);
+        // Omni Channel
+        Route::get('/inbox', [OmniChannelController::class, 'getDataInbox']);
+        Route::get('/chat/{dataid}', [OmniChannelController::class, 'getDataPercakapan']);
+        Route::post('/reply', [OmniChannelController::class, 'sendReply']);
+    });
 
-
-    // Omni Channel
-    Route::get('/inbox', [OmniChannelController::class, 'getDataInbox']);
-    Route::get('/chat/{dataid}', [OmniChannelController::class, 'getDataPercakapan']);
-    Route::post('/reply', [OmniChannelController::class, 'sendReply']);
-    // Route::put('/conversations/{kendaraanId}/read', [OmniChannelController::class, 'markAsRead']);
-
-    // Webhook for incoming messages
+    // ============ WEBHOOK (PUBLIC) ============
+    // Webhook for incoming messages (NO AUTH required)
     Route::post('/webhook/whatsapp', [OmniChannelController::class, 'webhookIncoming']);
-    Route::post('/webhook/whatsapp/test', [OmniChannelController::class, 'webhookIncoming_test']);
 });
