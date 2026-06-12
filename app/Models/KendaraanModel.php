@@ -8,6 +8,11 @@ use Illuminate\Database\Eloquent\Model;
 class KendaraanModel extends Model
 {
     protected $table = 'kendaraan';
+
+    protected $attributes = [
+        'status_broadcast' => 'belum_dikirim',
+    ];
+
     protected $fillable = [
         'kode_wilayah',
         'jenis_roda',
@@ -16,6 +21,7 @@ class KendaraanModel extends Model
         'tanggal_akhir_pajak',
         'no_telepon',
         'jumlah_tagihan',
+        'message_id',
         'status_broadcast',
         'pesan_blast',
         'tanggal_kirim',

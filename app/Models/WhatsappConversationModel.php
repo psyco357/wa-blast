@@ -10,6 +10,8 @@ class WhatsappConversationModel extends Model
     protected $table = 'whatsapp_conversations';
     protected $fillable = [
         'kendaraan_id',
+        'external_id',
+        'gateway_number',
         'nomor_wa',
         'pesan_masuk',
         'pesan_keluar',

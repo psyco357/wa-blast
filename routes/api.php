@@ -31,14 +31,19 @@ Route::prefix('v1')->group(function () {
     Route::apiResource('kendaraans', KendaraanController::class);
     Route::put('/kendaraans/{id}/status', [KendaraanController::class, 'updateStatus']);
 
+
     // Post kendaraan baru
     Route::post('/kendaraans', [KendaraanController::class, 'store']);
 
     // POST endpoints for Broadcast
     Route::post('/send-mass', [BroadcastController::class, 'sendMassBroadcast']);
     Route::post('/send-single/{id}', [BroadcastController::class, 'sendSingleBroadcast']);
-    Route::post('/retry-failed', [BroadcastController::class, 'retryFailedBroadcast']);
-    Route::post('/cancel/{id}', [BroadcastController::class, 'cancelBroadcast']);
+    // Route::post('/retry-failed', [BroadcastController::class, 'retryFailedBroadcast']);
+    // Route::post('/cancel/{id}', [BroadcastController::class, 'cancelBroadcast']);
+
+    // callback endpoint for status update
+    // Route::post('/callback', [BroadcastController::class, 'statusUpdateCallback']);
+    // Route::post('/callback/test', [BroadcastController::class, 'statusUpdateCallback_test']);
 
     // Import routes
     Route::post('/import/excel', [ImportController::class, 'import']);
@@ -47,15 +52,19 @@ Route::prefix('v1')->group(function () {
     Route::get('/import/template', [ImportController::class, 'downloadTemplate']);
 
     // Reports
-    Route::get('/reports/export', [ReportController::class, 'exportExcel']);
+    // Route::get('/reports/export', [ReportController::class, 'exportExcel']);
     Route::get('/reports/data', [ReportController::class, 'getReportData']);
+    Route::get('/reports', [ReportController::class, 'getReportByDate']);
+    Route::get('/reports/excel', [ReportController::class, 'exportFilteredExcel']);
+
 
     // Omni Channel
-    Route::get('/conversations', [OmniChannelController::class, 'getConversations']);
-    Route::get('/conversations/{kendaraanId}', [OmniChannelController::class, 'getConversations']);
-    Route::post('/conversations/reply', [OmniChannelController::class, 'sendReply']);
-    Route::put('/conversations/{kendaraanId}/read', [OmniChannelController::class, 'markAsRead']);
+    Route::get('/inbox', [OmniChannelController::class, 'getDataInbox']);
+    Route::get('/chat/{dataid}', [OmniChannelController::class, 'getDataPercakapan']);
+    Route::post('/reply', [OmniChannelController::class, 'sendReply']);
+    // Route::put('/conversations/{kendaraanId}/read', [OmniChannelController::class, 'markAsRead']);
 
     // Webhook for incoming messages
     Route::post('/webhook/whatsapp', [OmniChannelController::class, 'webhookIncoming']);
+    Route::post('/webhook/whatsapp/test', [OmniChannelController::class, 'webhookIncoming_test']);
 });

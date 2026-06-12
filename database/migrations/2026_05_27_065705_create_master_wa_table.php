@@ -18,7 +18,15 @@ return new class extends Migration
             $table->date('tanggal_akhir_pajak');
             $table->string('no_telepon', 20);
             $table->decimal('jumlah_tagihan', 15, 2);
-            $table->enum('status_broadcast', ['pending', 'terkirim', 'gagal'])->default('pending');
+            $table->enum('status_broadcast', [
+                'belum_dikirim',
+                'antrian',
+                'sedang_dikirim',
+                'terkirim',
+                'dibaca',
+                'gagal'
+            ])->default('belum_dikirim');
+            $table->string('message_id')->nullable();
             $table->text('pesan_blast')->nullable();
             $table->timestamp('tanggal_kirim')->nullable();
             $table->text('keterangan_gagal')->nullable();
@@ -30,7 +38,7 @@ return new class extends Migration
             $table->foreignId('kendaraan_id')->constrained('kendaraan')->onDelete('cascade');
             $table->string('no_tujuan');
             $table->text('pesan');
-            $table->enum('status', ['pending', 'terkirim', 'gagal']);
+            $table->enum('status', ['belum_dikirim', 'antrian', 'sedang_dikirim', 'terkirim', 'dibaca', 'gagal'])->default('belum_dikirim');
             $table->text('response')->nullable();
             $table->timestamp('sent_at')->nullable();
             $table->timestamps();
@@ -38,7 +46,12 @@ return new class extends Migration
 
         Schema::create('whatsapp_conversations', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('kendaraan_id')->constrained('kendaraan')->onDelete('cascade');
+             $table->foreignId('kendaraan_id')
+                ->nullable()
+                ->constrained('kendaraan')
+                ->nullOnDelete();
+            $table->string('external_id')->nullable()->index();
+            $table->string('gateway_number')->nullable();
             $table->string('nomor_wa');
             $table->text('pesan_masuk');
             $table->text('pesan_keluar')->nullable();
@@ -47,11 +60,66 @@ return new class extends Migration
             $table->boolean('dibaca')->default(false);
             $table->timestamps();
         });
+
+        Schema::create('whatsapp_data', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('kendaraan_id')
+                ->nullable()
+                ->constrained('kendaraan')
+                ->nullOnDelete();
+
+            $table->string('nomor_wa')->index();
+            $table->string('gateway_id')->nullable();
+            $table->timestamp('last_message_at')->nullable();
+
+            $table->timestamps();
+        });
+        
+        Schema::create('whatsapp_messages', function (Blueprint $table) {
+            $table->id();
+
+            $table->foreignId('whatsapp_data_id')
+                        ->constrained('whatsapp_data')
+                        ->cascadeOnDelete();
+
+            $table->string('external_id')->nullable()->index();
+
+            $table->enum('direction', [
+                'incoming',
+                'outgoing'
+            ]);
+
+            $table->enum('type', [
+                'text',
+                'image',
+                'document',
+                'video'
+            ])->default('text');
+
+            $table->longText('body')->nullable();
+
+            $table->string('media_url')->nullable();
+            $table->string('filename')->nullable();
+
+            $table->enum('status', [
+                'submitted',
+                'sent',
+                'delivered',
+                'read',
+                'failed'
+            ])->nullable();
+
+            $table->timestamp('message_time')->nullable();
+
+            $table->timestamps();
+        });
     }
 
     public function down(): void
     {
         Schema::dropIfExists('whatsapp_conversations');
+        Schema::dropIfExists('whatsapp_messages');
+        Schema::dropIfExists('whatsapp_data');
         Schema::dropIfExists('broadcast_logs');
         Schema::dropIfExists('kendaraan');
     }

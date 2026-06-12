@@ -179,7 +179,7 @@ class ProcessKendaraanImportJob implements ShouldQueue
                     'tanggal_akhir_pajak' => $vehicleData['tanggal_akhir_pajak'],
                     'no_telepon' => $vehicleData['no_telepon'],
                     'jumlah_tagihan' => $vehicleData['jumlah_tagihan'],
-                    'status_broadcast' => 'pending',
+                    'status_broadcast' => 'belum_dikirim',
                 ]);
 
                 $successCount++;

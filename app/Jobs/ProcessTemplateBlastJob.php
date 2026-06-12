@@ -9,7 +9,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use App\Models\BroadcastLogModel;
 use App\Models\KendaraanModel;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Helpers\TemplateWaBlast;
 use Throwable;
@@ -53,7 +52,7 @@ class ProcessTemplateBlastJob implements ShouldQueue
         try {
             // Kirim WA via helper
             $response = TemplateWaBlast::templateKuningan(
-                $this->recipient,
+                $this->formatPhoneNumber($this->recipient),
                 $this->nama,
                 $this->no_pol,
                 $this->media_template,
@@ -66,16 +65,19 @@ class ProcessTemplateBlastJob implements ShouldQueue
 
             // Cek response dari API
             if (isset($response['error']) && $response['error'] === false) {
+                $messageId = $response['data']['message_id'] ?? null;
+
                 // Update status kendaraan
                 $vehicle->update([
-                    'status_broadcast' => 'terkirim',
-                    'tanggal_kirim' => now(),
+                    'status_broadcast' => 'antrian',
+                    'message_id' => $messageId,
+                    'tanggal_kirim' => null,
                     'keterangan_gagal' => null,
                 ]);
 
-                // Simpan log sukses
-                $this->saveBroadcastLog($vehicle, 'WA broadcast berhasil dikirim', [
-                    'success' => true,
+                // Simpan log bahwa request sudah diterima gateway dan menunggu callback final.
+                $this->saveBroadcastLog($vehicle, 'WA broadcast diterima gateway, menunggu callback', [
+                    'status' => 'antrian',
                     'response' => $response
                 ]);
             } else {
@@ -84,12 +86,13 @@ class ProcessTemplateBlastJob implements ShouldQueue
                 // Update status gagal
                 $vehicle->update([
                     'status_broadcast' => 'gagal',
+                    'message_id' => null,
                     'keterangan_gagal' => $errorMsg,
                 ]);
 
                 // Simpan log gagal
                 $this->saveBroadcastLog($vehicle, "Gagal mengirim WA broadcast: {$errorMsg}", [
-                    'success' => false,
+                    'status' => 'gagal',
                     'response' => $response
                 ]);
 
@@ -109,17 +112,19 @@ class ProcessTemplateBlastJob implements ShouldQueue
             if ($this->attempts() >= $this->tries) {
                 $vehicle->update([
                     'status_broadcast' => 'gagal',
+                    'message_id' => null,
                     'keterangan_gagal' => "Error after {$this->tries} attempts: " . $e->getMessage(),
                 ]);
             } else {
                 $vehicle->update([
-                    'status_broadcast' => 'pending', // Akan retry
+                    'status_broadcast' => 'antrian', // Akan retry
+                    'message_id' => null,
                     'keterangan_gagal' => "Retry {$this->attempts()}: " . $e->getMessage(),
                 ]);
             }
 
             $this->saveBroadcastLog($vehicle, 'Error saat mengirim WA broadcast: ' . $e->getMessage(), [
-                'success' => false,
+                'status' => 'gagal',
                 'error' => $e->getMessage()
             ]);
 
@@ -129,13 +134,15 @@ class ProcessTemplateBlastJob implements ShouldQueue
 
     private function saveBroadcastLog(KendaraanModel $vehicle, string $message, array $result): void
     {
+        $status = $result['status'] ?? 'gagal';
+
         BroadcastLogModel::create([
             'kendaraan_id' => $vehicle->id,
             'no_tujuan' => $vehicle->no_telepon,
             'pesan' => $message,
-            'status' => ($result['success'] ?? false) ? 'terkirim' : 'gagal',
+            'status' => $status,
             'response' => isset($result['response']) ? json_encode($result['response']) : ($result['error'] ?? null),
-            'sent_at' => ($result['success'] ?? false) ? now() : null,
+            'sent_at' => $status === 'terkirim' ? now() : null,
         ]);
     }
 
@@ -158,8 +165,22 @@ class ProcessTemplateBlastJob implements ShouldQueue
         if ($vehicle) {
             $vehicle->update([
                 'status_broadcast' => 'gagal',
+                'message_id' => null,
                 'keterangan_gagal' => 'Permanent failure: ' . $exception->getMessage(),
             ]);
         }
+    }
+
+    private function formatPhoneNumber(string $phone): string
+    {
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+
+        if (str_starts_with($phone, '0')) {
+            $phone = '62' . substr($phone, 1);
+        } elseif (str_starts_with($phone, '8')) {
+            $phone = '62' . $phone;
+        }
+
+        return $phone;
     }
 }

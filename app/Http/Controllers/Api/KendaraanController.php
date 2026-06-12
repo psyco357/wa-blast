@@ -12,6 +12,7 @@ class KendaraanController extends Controller
 {
     public function index(Request $request)
     {
+        // dd($request->all());
         $query = KendaraanModel::query();
 
         // Filter by status
@@ -33,8 +34,8 @@ class KendaraanController extends Controller
                     ->orWhere('no_telepon', 'LIKE', "%{$search}%");
             });
         }
-
-        $vehicles = $query->orderBy('created_at', 'desc')->paginate(15);
+        $perPage = $request->input('per_page', 15);
+        $vehicles = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         return response()->json([
             'success' => true,
@@ -47,7 +48,7 @@ class KendaraanController extends Controller
         $validator = Validator::make($request->all(), [
             'kode_wilayah' => 'required|string|max:20',
             'jenis_roda' => 'required|in:r2,r4,r6',
-            'nomor_polisi' => 'required|string|max:20|unique:vehicles',
+            'nomor_polisi' => 'required|string|max:20|unique:kendaraan',
             'nama_pemilik' => 'required|string|max:255',
             'tanggal_akhir_pajak' => 'required|date',
             'no_telepon' => 'required|string|max:20',

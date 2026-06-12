@@ -8,6 +8,8 @@ use App\Jobs\ProcessKendaraanImportJob;
 use App\Models\ImportHistoryModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class ImportController extends Controller
 {
@@ -73,6 +75,10 @@ class ImportController extends Controller
      */
     public function downloadTemplate()
     {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Header
         $headers = [
             'Kode Wilayah',
             'Jenis Roda',
@@ -83,17 +89,11 @@ class ImportController extends Controller
             'Jumlah Tagihan'
         ];
 
-        $callback = function () use ($headers) {
-            $file = fopen('php://output', 'w');
+        $sheet->fromArray($headers, null, 'A1');
 
-            // Add UTF-8 BOM
-            fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF));
-
-            // Write headers
-            fputcsv($file, $headers);
-
-            // Write example data
-            fputcsv($file, [
+        // Contoh data
+        $sheet->fromArray([
+            [
                 '11800',
                 'r2',
                 'K 2978 EG',
@@ -101,9 +101,8 @@ class ImportController extends Controller
                 '2026-01-07',
                 '08123456789',
                 '12600000'
-            ]);
-
-            fputcsv($file, [
+            ],
+            [
                 '11801',
                 'r4',
                 'B 1234 CD',
@@ -111,15 +110,31 @@ class ImportController extends Controller
                 '2026-02-15',
                 '08123456790',
                 '25000000'
-            ]);
+            ]
+        ], null, 'A2');
 
-            fclose($file);
-        };
+        // Header bold
+        $sheet->getStyle('A1:G1')->getFont()->setBold(true);
 
-        return response()->stream($callback, 200, [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="template_import_vehicle.csv"',
-        ]);
+        // Auto size kolom
+        foreach (range('A', 'G') as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+
+        $writer = new Xlsx($spreadsheet);
+
+        $fileName = 'template_import_vehicle.xlsx';
+
+        return response()->streamDownload(
+            function () use ($writer) {
+                $writer->save('php://output');
+            },
+            $fileName,
+            [
+                'Content-Type' =>
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ]
+        );
     }
 
     /**

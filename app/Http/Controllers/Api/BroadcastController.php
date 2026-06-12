@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\KendaraanModel as Kendaraan;
 use App\Models\BroadcastLogModel as BroadcastLog;
+use App\Models\WhatsappMessageModel;
+use App\Models\WhatshapDataModel;
 use App\Jobs\ProcessTemplateBlastJob;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,13 +16,14 @@ use Illuminate\Support\Facades\Log;
 class BroadcastController extends Controller
 {
 
-
     /**
      * POST /api/broadcast/send-mass
      * Kirim broadcast massal
      */
     public function sendMassBroadcast(Request $request)
     {
+        // dd($request->all());
+        // Log::info('SEND MASS', $request->all());
         $validator = Validator::make($request->all(), [
             'kendaraan_ids' => 'required|array|min:1',
             'kendaraan_ids.*' => 'exists:kendaraan,id',
@@ -35,16 +38,16 @@ class BroadcastController extends Controller
                 'errors' => $validator->errors()
             ], 422);
         }
-
-        // Ambil data kendaraan yang statusnya pending atau gagal
+        // Ambil data kendaraan yang belum pernah dikirim atau pernah gagal.
         $kendaraan = Kendaraan::whereIn('id', $request->kendaraan_ids)
-            ->whereIn('status_broadcast', ['pending', 'gagal'])
             ->get();
+        // dd($kendaraan);
 
+        // die;
         if ($kendaraan->isEmpty()) {
             return response()->json([
                 'success' => false,
-                'message' => 'No eligible vehicles found (status must be pending or failed)',
+                'message' => 'No eligible vehicles found (status must be belum_dikirim or gagal)',
                 'data' => [
                     'total_selected' => count($request->kendaraan_ids),
                     'eligible' => 0
@@ -60,13 +63,14 @@ class BroadcastController extends Controller
         try {
             foreach ($kendaraan as $vehicle) {
                 try {
+
                     // Dispatch ke queue
                     ProcessTemplateBlastJob::dispatch(
                         $vehicle->no_telepon,
                         $vehicle->nama_pemilik,
                         $vehicle->nomor_polisi,
                         $request->media_template
-                    )->onQueue('broadcast');
+                    )->onQueue('broadcasts');
 
                     // Update status kendaraan
                     $vehicle->update([
@@ -102,7 +106,7 @@ class BroadcastController extends Controller
                     'total_failed' => $failed,
                     'total_selected' => count($request->kendaraan_ids),
                     'errors' => $errors,
-                    'queue' => 'broadcast'
+                    'queue' => 'broadcasts'
                 ]
             ]);
         } catch (\Exception $e) {
@@ -167,7 +171,7 @@ class BroadcastController extends Controller
                 $kendaraan->nama_pemilik,
                 $kendaraan->nomor_polisi,
                 $request->media_template
-            )->onQueue('broadcast');
+            )->onQueue('broadcasts');
 
             // Update status
             $kendaraan->update([
@@ -184,7 +188,7 @@ class BroadcastController extends Controller
                     'id' => $kendaraan->id,
                     'nomor_polisi' => $kendaraan->nomor_polisi,
                     'status' => $kendaraan->status_broadcast,
-                    'queue' => 'broadcast'
+                    'queue' => 'broadcasts'
                 ]
             ]);
         } catch (\Exception $e) {
@@ -199,69 +203,6 @@ class BroadcastController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
-    }
-
-    /**
-     * POST /api/broadcast/retry-failed
-     * Kirim ulang broadcast yang gagal
-     */
-    public function retryFailedBroadcast(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'kendaraan_ids' => 'required|array|min:1',
-            'kendaraan_ids.*' => 'exists:kendaraan,id',
-            'media_template' => 'required|string',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation error',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        // Ambil hanya yang statusnya gagal
-        $kendaraan = Kendaraan::whereIn('id', $request->kendaraan_ids)
-            ->where('status_broadcast', 'gagal')
-            ->get();
-
-        if ($kendaraan->isEmpty()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No failed broadcasts found to retry'
-            ], 400);
-        }
-
-        $dispatched = 0;
-        $skipped = count($request->kendaraan_ids) - $kendaraan->count();
-
-        foreach ($kendaraan as $vehicle) {
-            ProcessTemplateBlastJob::dispatch(
-                $vehicle->no_telepon,
-                $vehicle->nama_pemilik,
-                $vehicle->nomor_polisi,
-                $request->media_template
-            )->onQueue('broadcast');
-
-            $vehicle->update([
-                'status_broadcast' => 'pending',
-                'keterangan_gagal' => null,
-                'tanggal_kirim' => now(),
-            ]);
-
-            $dispatched++;
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Retry jobs dispatched successfully',
-            'data' => [
-                'total_retried' => $dispatched,
-                'total_skipped' => $skipped,
-                'reason_skipped' => 'Status not failed'
-            ]
-        ]);
     }
 
     /**
@@ -321,156 +262,7 @@ class BroadcastController extends Controller
         ]);
     }
 
-    /**
-     * GET /api/broadcast/status/{id}
-     * Cek status broadcast kendaraan
-     */
-    public function checkStatus($id)
-    {
-        $kendaraan = Kendaraan::find($id);
-
-        if (!$kendaraan) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Vehicle not found'
-            ], 404);
-        }
-
-        // Ambil last log
-        $lastLog = BroadcastLog::where('kendaraan_id', $id)
-            ->orderBy('created_at', 'desc')
-            ->first();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Broadcast status retrieved successfully',
-            'data' => [
-                'vehicle' => [
-                    'id' => $kendaraan->id,
-                    'nomor_polisi' => $kendaraan->nomor_polisi,
-                    'nama_pemilik' => $kendaraan->nama_pemilik,
-                    'no_telepon' => $kendaraan->no_telepon,
-                ],
-                'broadcast_status' => $kendaraan->status_broadcast,
-                'tanggal_kirim' => $kendaraan->tanggal_kirim,
-                'keterangan_gagal' => $kendaraan->keterangan_gagal,
-                'last_log' => $lastLog ? [
-                    'status' => $lastLog->status,
-                    'sent_at' => $lastLog->sent_at,
-                    'created_at' => $lastLog->created_at,
-                ] : null
-            ]
-        ]);
-    }
-
-    /**
-     * GET /api/broadcast/stats
-     * Statistik broadcast
-     */
-    public function getStats(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'kode_wilayah' => 'nullable|string|max:20',
-            'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation error',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        $query = Kendaraan::query();
-        $logQuery = BroadcastLog::query();
-
-        if ($request->has('kode_wilayah')) {
-            $query->where('kode_wilayah', $request->kode_wilayah);
-            $logQuery->whereHas('kendaraan', function ($q) use ($request) {
-                $q->where('kode_wilayah', $request->kode_wilayah);
-            });
-        }
-
-        if ($request->has('start_date')) {
-            $logQuery->whereDate('created_at', '>=', $request->start_date);
-        }
-
-        if ($request->has('end_date')) {
-            $logQuery->whereDate('created_at', '<=', $request->end_date);
-        }
-
-        $stats = [
-            'vehicles' => [
-                'total' => $query->count(),
-                'pending' => (clone $query)->where('status_broadcast', 'pending')->count(),
-                'terkirim' => (clone $query)->where('status_broadcast', 'terkirim')->count(),
-                'gagal' => (clone $query)->where('status_broadcast', 'gagal')->count(),
-            ],
-            'logs' => [
-                'total' => $logQuery->count(),
-                'success' => (clone $logQuery)->where('status', 'terkirim')->count(),
-                'failed' => (clone $logQuery)->where('status', 'gagal')->count(),
-            ],
-            'success_rate' => 0,
-        ];
-
-        // Hitung success rate
-        if ($stats['logs']['total'] > 0) {
-            $stats['success_rate'] = round(
-                ($stats['logs']['success'] / $stats['logs']['total']) * 100,
-                2
-            );
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Broadcast statistics retrieved successfully',
-            'data' => $stats
-        ]);
-    }
-
-    /**
-     * POST /api/broadcast/cancel/{id}
-     * Batalkan broadcast yang masih pending
-     */
-    public function cancelBroadcast($id)
-    {
-        $kendaraan = Kendaraan::find($id);
-
-        if (!$kendaraan) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Vehicle not found'
-            ], 404);
-        }
-
-        if ($kendaraan->status_broadcast !== 'pending') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Cannot cancel broadcast with status: ' . $kendaraan->status_broadcast,
-                'data' => [
-                    'current_status' => $kendaraan->status_broadcast
-                ]
-            ], 400);
-        }
-
-        $kendaraan->update([
-            'status_broadcast' => 'gagal',
-            'keterangan_gagal' => 'Cancelled by user',
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Broadcast cancelled successfully',
-            'data' => [
-                'id' => $kendaraan->id,
-                'status' => $kendaraan->status_broadcast
-            ]
-        ]);
-    }
-
+ 
     /**
      * Generate pesan broadcast (private method)
      */
@@ -486,5 +278,163 @@ class BroadcastController extends Controller
             ],
             $template
         );
+    }
+
+
+    public function statusUpdateCallback(Request $request)
+    {
+        $payload = $request->all();
+        Log::info('NusaSMS Callback', $payload);
+
+        // Cek tipe callback
+        if ($payload['type'] !== 'status') {
+            return response()->json(['success' => true]);
+        }
+
+        $statusData = $payload['status'];
+        $messageId = $statusData['message_id'];
+        $status = $statusData['status']; // submitted, sent, delivered, read, failed
+        $timestamp = $statusData['timestamp'];
+        $gatewayId = $statusData['gateway_id'];
+        $recipient = $statusData['recipient'];
+
+        if (!$messageId || !$status) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid callback data'
+            ]);
+        }
+
+        // 1. Update ke WhatsappMessageModel berdasarkan external_id
+        $message = WhatsappMessageModel::where('external_id', $messageId)->first();
+
+        if ($message) {
+            // Map status NusaSMS ke status database
+            $statusMap = [
+                'submitted' => 'submitted',
+                'sent' => 'sent',
+                'delivered' => 'delivered',
+                'read' => 'read',
+                'failed' => 'failed',
+            ];
+
+            $message->update([
+                'status' => $statusMap[$status] ?? $status,
+                'message_time' => date('Y-m-d H:i:s', $timestamp),
+            ]);
+
+            // Update conversation
+            if ($message->conversation) {
+                $message->conversation->update([
+                    'last_message_at' => date('Y-m-d H:i:s', $timestamp),
+                    'gateway_id' => $gatewayId,
+                ]);
+            }
+
+            Log::info('Message status updated', [
+                'message_id' => $messageId,
+                'status' => $status
+            ]);
+        }
+
+        // 2. Update ke Kendaraan (jika message_id tersimpan di kendaraan)
+        $vehicle = Kendaraan::where('message_id', $messageId)->first();
+
+        if ($vehicle) {
+            $statusMapKendaraan = [
+                'submitted' => 'sedang_dikirim',
+                'sent' => 'sedang_dikirim',
+                'delivered' => 'terkirim',
+                'read' => 'dibaca',
+                'failed' => 'gagal',
+            ];
+
+            $updateData = [
+                'status_broadcast' => $statusMapKendaraan[$status] ?? $status,
+                'tanggal_kirim' => date('Y-m-d H:i:s', $timestamp),
+            ];
+
+            if ($status === 'failed') {
+                $updateData['keterangan_gagal'] = 'Pengiriman gagal';
+            }
+
+            if (in_array($status, ['delivered', 'read'])) {
+                $updateData['keterangan_gagal'] = null;
+            }
+
+            $vehicle->update($updateData);
+
+            Log::info('Vehicle status updated', [
+                'vehicle_id' => $vehicle->id,
+                'status' => $status
+            ]);
+        }
+
+        // Log jika tidak ditemukan
+        if (!$message && !$vehicle) {
+            Log::warning('Callback: No message or vehicle found', [
+                'message_id' => $messageId,
+                'recipient' => $recipient
+            ]);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
+
+    public function statusUpdateCallback_test(Request $request)
+    {
+        Log::info('WA Status Callback', $request->all());
+
+        $messageId = $request->input('status.message_id');
+        $status    = strtolower($request->input('status.status'));
+        $timestamp = $request->input('status.timestamp');
+        $recipient = $request->input('status.recipient');
+
+        if (!$messageId || !$status) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid callback data'
+            ]);
+        }
+
+        $vehicle = Kendaraan::where(
+            'message_id',
+            $messageId
+        )->first();
+
+        if (!$vehicle) {
+            Log::warning('Kendaraan tidak ditemukan', [
+                'message_id' => $messageId
+            ]);
+
+            return response()->json([
+                'success' => true
+            ]);
+        }
+
+        $statusMap = [
+            'submitted' => 'antrian',
+            'sent'      => 'sedang_dikirim',
+            'delivered' => 'terkirim',
+            'read'      => 'dibaca',
+            'failed'    => 'gagal',
+            'info'      => 'info',
+        ];
+
+        $updateData = [
+            'status_broadcast' => $statusMap[$status] ?? 'unknown',
+        ];
+
+        if (in_array($status, ['delivered', 'read'])) {
+            $updateData['tanggal_kirim'] =
+                date('Y-m-d H:i:s', $timestamp);
+        }
+
+        $vehicle->update($updateData);
+
+        return response()->json([
+            'success' => true
+        ]);
     }
 }

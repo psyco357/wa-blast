@@ -14,7 +14,11 @@ class TemplateWaBlast
         $apiKey = env('NUSA_SMS_API_KEY', '');
         $gateway_id = env('NUSA_SMS_GATEWAY_ID', '');
 
-
+        Log::info('NUSA CONFIG', [
+            'url' => $url,
+            'api_key_exists' => !empty($apiKey),
+            'gateway_exists' => !empty($gateway_id),
+        ]);
         if ($media_template === 'video') {
 
             $template_name = 'bappenda_kuningan_vidio';
@@ -90,5 +94,31 @@ class TemplateWaBlast
                 'status'  => 500,
             ];
         }
+    }
+
+    public static function replyMessage(
+        string $recipient,
+        string $type,
+        array $payloads
+    ): array {
+
+        Log::info('Preparing to send reply message', [
+            'recipient' => $recipient,
+            'type' => $type,
+            'payloads' => $payloads,
+        ]);
+        $response = Http::withHeaders([
+            'APIKey' => env('NUSA_SMS_API_KEY'),
+        ])->post(
+            env('NUSA_SMS_URL_REPLY'),
+            [
+                'recipient' => $recipient,
+                'gateway_id' => env('NUSA_SMS_GATEWAY_ID'),
+                'type' => $type,
+                'payloads' => $payloads,
+            ]
+        );
+
+        return $response->json();
     }
 }

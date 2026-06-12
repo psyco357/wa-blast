@@ -73,7 +73,7 @@ class KendaraanImport
                     'tanggal_akhir_pajak' => $rowData['tanggal_akhir_pajak'],
                     'no_telepon' => $rowData['no_telepon'],
                     'jumlah_tagihan' => $rowData['jumlah_tagihan'],
-                    'status_broadcast' => 'pending'
+                    'status_broadcast' => 'belum_dikirim',
                 ]);
 
                 $this->successCount++;
