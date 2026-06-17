@@ -16,8 +16,13 @@ class KendaraanController extends Controller
         $query = KendaraanModel::query();
 
         // Filter by status
-        if ($request->has('status')) {
-            $query->where('status_broadcast', $request->status);
+        if ($request->has('status_broadcast')  && $request->status_broadcast !== 'all') {
+            $query->where('status_broadcast', $request->status_broadcast);
+        }
+
+        // filter by jenis roda        
+        if ($request->has('jenis_roda') && $request->jenis_roda !== 'all') {
+            $query->where('jenis_roda', $request->jenis_roda);
         }
 
         // Filter by date range
